@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from agents import create_mcp_agent
@@ -51,6 +52,20 @@ def analyze_contribution():
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "Backend is running"}), 200
+
+@app.route('/debug', methods=['GET'])
+def debug_info():
+    import sys
+    return jsonify({
+        "python_executable": sys.executable,
+        "python_version": sys.version,
+        "python_path": sys.path,
+        "cwd": os.getcwd(),
+        "env_vars": {
+            "GITHUB_TOKEN": "***" if os.getenv("GITHUB_TOKEN") else None,
+            "GITHUB_API_BASE": os.getenv("GITHUB_API_BASE")
+        }
+    }), 200
 
 if __name__ == "__main__":
     app.run(debug=True, port=8765, host='localhost')

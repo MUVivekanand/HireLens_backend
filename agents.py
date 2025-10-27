@@ -1,4 +1,5 @@
 import os
+import sys
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 from autogen_ext.tools.mcp import StdioServerParams, mcp_server_tools
 from autogen_agentchat.agents import AssistantAgent
@@ -31,8 +32,16 @@ async def create_mcp_agent():
 
     github_server_path = os.path.join(os.path.dirname(__file__), "githubmcp.py")
 
+    # Use sys.executable to get the current Python interpreter path
+    # This ensures the subprocess uses the same Python environment
+    python_executable = sys.executable
+    
+    print(f"Using Python executable: {python_executable}")
+    print(f"GitHub MCP path: {github_server_path}")
+
     github_server = StdioServerParams(
-        command="python", args=[github_server_path]
+        command=python_executable,  # Changed from "python" to sys.executable
+        args=[github_server_path]
     )
 
     github_tools = await mcp_server_tools(github_server)
