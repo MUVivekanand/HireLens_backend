@@ -2,7 +2,6 @@ import tempfile
 import shutil
 from typing import TypedDict, List, Optional, Dict, Any
 import os
-from pydantic import BaseModel, Field
 from fastmcp import FastMCP
 import requests
 import subprocess
@@ -31,6 +30,7 @@ def make_github_request(endpoint: str, method: str = "GET") -> Dict[Any, Any]:
     response.raise_for_status()
     return response.json()
 
+
 def clone_repo_temp(repo_url: str, branch: str = "main") -> str:
     """Clone repository to temporary directory."""
     temp_dir = tempfile.mkdtemp()
@@ -42,34 +42,35 @@ def clone_repo_temp(repo_url: str, branch: str = "main") -> str:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise Exception(f"Failed to clone repository: {e.stderr}")
 
-# Pydantic Models for structured responses
-class CommitInfo(BaseModel):
+
+# TypedDict classes for structured responses
+class CommitInfo(TypedDict):
     """Commit information structure."""
-    sha: str = Field(description="Commit SHA hash")
-    message: str = Field(description="Commit message")
-    author: str = Field(description="Commit author")
-    date: str = Field(description="Commit date")
-    url: str = Field(description="Commit URL")
+    sha: str
+    message: str
+    author: str
+    date: str
+    url: str
 
 
-class FileChange(BaseModel):
+class FileChange(TypedDict):
     """File change information."""
-    filename: str = Field(description="Changed file path")
-    status: str = Field(description="Change status (added/modified/deleted)")
-    additions: int = Field(description="Lines added")
-    deletions: int = Field(description="Lines deleted")
-    patch: Optional[str] = Field(description="File diff patch", default=None)
+    filename: str
+    status: str
+    additions: int
+    deletions: int
+    patch: Optional[str]
 
 
-class CommitDiff(BaseModel):
+class CommitDiff(TypedDict):
     """Complete commit diff information."""
     commit: CommitInfo
     files: List[FileChange]
-    total_additions: int = Field(description="Total lines added")
-    total_deletions: int = Field(description="Total lines deleted")
+    total_additions: int
+    total_deletions: int
 
 
-class RepoInfo(BaseModel):
+class RepoInfo(TypedDict):
     """Repository information."""
     name: str
     full_name: str
@@ -85,74 +86,80 @@ class BranchInfo(TypedDict):
     sha: str
     protected: bool
 
+
 @mcp.tool()
-def get_latest_commit(owner: str, repo: str, branch: str = "main") -> CommitInfo:
+def get_latest_commit(owner: str, repo: str, branch: str = "main") -> dict:
     """Get the latest commit from a repository branch."""
     try:
         data = make_github_request(f"repos/{owner}/{repo}/commits/{branch}")
-        return CommitInfo(
-            sha=data["sha"],
-            message=data["commit"]["message"],
-            author=data["commit"]["author"]["name"],
-            date=data["commit"]["author"]["date"],
-            url=data["html_url"]
-        )
+        return {
+            "sha": data["sha"],
+            "message": data["commit"]["message"],
+            "author": data["commit"]["author"]["name"],
+            "date": data["commit"]["author"]["date"],
+            "url": data["html_url"]
+        }
     except Exception as e:
         raise Exception(f"Failed to get latest commit: {str(e)}")
 
 
-# Additional MCP Tools for full GitHub access
 @mcp.tool()
-def get_commit_diff(owner: str, repo: str, commit_sha: str) -> CommitDiff:
+def get_commit_diff(owner: str, repo: str, commit_sha: str) -> dict:
     """Get detailed diff for a specific commit."""
     try:
         commit_data = make_github_request(f"repos/{owner}/{repo}/commits/{commit_sha}")
-        commit_info = CommitInfo(
-            sha=commit_data["sha"],
-            message=commit_data["commit"]["message"],
-            author=commit_data["commit"]["author"]["name"],
-            date=commit_data["commit"]["author"]["date"],
-            url=commit_data["html_url"]
-        )
+        
+        commit_info = {
+            "sha": commit_data["sha"],
+            "message": commit_data["commit"]["message"],
+            "author": commit_data["commit"]["author"]["name"],
+            "date": commit_data["commit"]["author"]["date"],
+            "url": commit_data["html_url"]
+        }
+        
         files = []
         total_additions = 0
         total_deletions = 0
+        
         for file_data in commit_data.get("files", []):
-            file_change = FileChange(
-                filename=file_data["filename"],
-                status=file_data["status"],
-                additions=file_data.get("additions", 0),
-                deletions=file_data.get("deletions", 0),
-                patch=file_data.get("patch", "")
-            )
+            file_change = {
+                "filename": file_data["filename"],
+                "status": file_data["status"],
+                "additions": file_data.get("additions", 0),
+                "deletions": file_data.get("deletions", 0),
+                "patch": file_data.get("patch", "")
+            }
             files.append(file_change)
-            total_additions += file_change.additions
-            total_deletions += file_change.deletions
-        return CommitDiff(
-            commit=commit_info,
-            files=files,
-            total_additions=total_additions,
-            total_deletions=total_deletions
-        )
+            total_additions += file_change["additions"]
+            total_deletions += file_change["deletions"]
+        
+        return {
+            "commit": commit_info,
+            "files": files,
+            "total_additions": total_additions,
+            "total_deletions": total_deletions
+        }
     except Exception as e:
         raise Exception(f"Failed to get commit diff: {str(e)}")
 
 
 @mcp.tool()
-def get_recent_commits(owner: str, repo: str, count: int = 10, branch: str = "main") -> List[CommitInfo]:
+def get_recent_commits(owner: str, repo: str, count: int = 10, branch: str = "main") -> List[dict]:
     """Get recent commits from a repository."""
     try:
         data = make_github_request(f"repos/{owner}/{repo}/commits?sha={branch}&per_page={count}")
         commits = []
+        
         for commit_data in data:
-            commit = CommitInfo(
-                sha=commit_data["sha"],
-                message=commit_data["commit"]["message"],
-                author=commit_data["commit"]["author"]["name"],
-                date=commit_data["commit"]["author"]["date"],
-                url=commit_data["html_url"]
-            )
+            commit = {
+                "sha": commit_data["sha"],
+                "message": commit_data["commit"]["message"],
+                "author": commit_data["commit"]["author"]["name"],
+                "date": commit_data["commit"]["author"]["date"],
+                "url": commit_data["html_url"]
+            }
             commits.append(commit)
+        
         return commits
     except Exception as e:
         raise Exception(f"Failed to get recent commits: {str(e)}")
@@ -163,10 +170,13 @@ def get_file_content(owner: str, repo: str, file_path: str, branch: str = "main"
     """Get content of a specific file from repository."""
     try:
         data = make_github_request(f"repos/{owner}/{repo}/contents/{file_path}?ref={branch}")
+        
         if data.get("type") != "file":
             raise Exception(f"Path {file_path} is not a file")
+        
         import base64
         content = base64.b64decode(data["content"]).decode('utf-8')
+        
         return {
             "path": file_path,
             "content": content,
@@ -176,6 +186,7 @@ def get_file_content(owner: str, repo: str, file_path: str, branch: str = "main"
         }
     except Exception as e:
         raise Exception(f"Failed to get file content: {str(e)}")
+
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
