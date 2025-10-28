@@ -181,9 +181,6 @@
 #     mcp.run(transport="stdio")
 
 
-"""
-GitHub tools for direct integration without MCP subprocess.
-"""
 import base64
 from typing import List, Dict, Any
 import os
@@ -192,6 +189,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Try to get token from environment (will be set by the backend for each request)
+# Fall back to .env if not set (for local testing)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_API_BASE = os.getenv("GITHUB_API_BASE", "https://api.github.com")
 
@@ -199,20 +198,38 @@ print(f"GitHub Tools - Using API Base: {GITHUB_API_BASE}")
 print(f"GitHub Tools - Token configured: {'Yes' if GITHUB_TOKEN else 'No'}")
 
 
-def make_github_request(endpoint: str, method: str = "GET") -> Dict[Any, Any]:
+def make_github_request(endpoint: str, method: str = "GET", token: str = None) -> Dict[Any, Any]:
     """Make authenticated GitHub API request."""
+    # Use provided token, or fall back to environment variable
+    if token is None:
+        token = os.getenv("GITHUB_TOKEN")
+    
+    if not token:
+        raise Exception("GitHub token not provided. Please provide a valid GitHub Personal Access Token.")
+    
     headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
+        "Authorization": f"token {token}",
         "Accept": "application/vnd.github.v3+json",
         "User-Agent": "GitHub-Tools"
     }
     url = f"{GITHUB_API_BASE}/{endpoint.lstrip('/')}"
-    response = requests.request(method, url, headers=headers)
-    response.raise_for_status()
-    return response.json()
+    
+    try:
+        response = requests.request(method, url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 401:
+            raise Exception("Invalid GitHub token. Please check your Personal Access Token.")
+        elif e.response.status_code == 403:
+            raise Exception("GitHub API rate limit exceeded or insufficient permissions.")
+        elif e.response.status_code == 404:
+            raise Exception(f"Repository or resource not found: {endpoint}")
+        else:
+            raise Exception(f"GitHub API error: {str(e)}")
 
 
-def get_latest_commit(owner: str, repo: str, branch: str = "main") -> dict:
+def get_latest_commit(owner: str, repo: str, branch: str = "main", token: str = None) -> dict:
     """
     Get the latest commit from a repository branch.
     
@@ -220,12 +237,13 @@ def get_latest_commit(owner: str, repo: str, branch: str = "main") -> dict:
         owner: Repository owner
         repo: Repository name
         branch: Branch name (default: main)
+        token: GitHub Personal Access Token (optional)
     
     Returns:
         Dictionary with commit information
     """
     try:
-        data = make_github_request(f"repos/{owner}/{repo}/commits/{branch}")
+        data = make_github_request(f"repos/{owner}/{repo}/commits/{branch}", token=token)
         return {
             "sha": data["sha"],
             "message": data["commit"]["message"],
@@ -237,7 +255,7 @@ def get_latest_commit(owner: str, repo: str, branch: str = "main") -> dict:
         raise Exception(f"Failed to get latest commit: {str(e)}")
 
 
-def get_commit_diff(owner: str, repo: str, commit_sha: str) -> dict:
+def get_commit_diff(owner: str, repo: str, commit_sha: str, token: str = None) -> dict:
     """
     Get detailed diff for a specific commit.
     
@@ -245,12 +263,13 @@ def get_commit_diff(owner: str, repo: str, commit_sha: str) -> dict:
         owner: Repository owner
         repo: Repository name
         commit_sha: Commit SHA hash
+        token: GitHub Personal Access Token (optional)
     
     Returns:
         Dictionary with commit diff information
     """
     try:
-        commit_data = make_github_request(f"repos/{owner}/{repo}/commits/{commit_sha}")
+        commit_data = make_github_request(f"repos/{owner}/{repo}/commits/{commit_sha}", token=token)
         
         commit_info = {
             "sha": commit_data["sha"],
@@ -286,7 +305,7 @@ def get_commit_diff(owner: str, repo: str, commit_sha: str) -> dict:
         raise Exception(f"Failed to get commit diff: {str(e)}")
 
 
-def get_recent_commits(owner: str, repo: str, count: int = 10, branch: str = "main") -> List[dict]:
+def get_recent_commits(owner: str, repo: str, count: int = 10, branch: str = "main", token: str = None) -> List[dict]:
     """
     Get recent commits from a repository.
     
@@ -295,12 +314,13 @@ def get_recent_commits(owner: str, repo: str, count: int = 10, branch: str = "ma
         repo: Repository name
         count: Number of commits to retrieve (default: 10)
         branch: Branch name (default: main)
+        token: GitHub Personal Access Token (optional)
     
     Returns:
         List of commit dictionaries
     """
     try:
-        data = make_github_request(f"repos/{owner}/{repo}/commits?sha={branch}&per_page={count}")
+        data = make_github_request(f"repos/{owner}/{repo}/commits?sha={branch}&per_page={count}", token=token)
         commits = []
         
         for commit_data in data:
@@ -318,7 +338,7 @@ def get_recent_commits(owner: str, repo: str, count: int = 10, branch: str = "ma
         raise Exception(f"Failed to get recent commits: {str(e)}")
 
 
-def get_file_content(owner: str, repo: str, file_path: str, branch: str = "main") -> dict:
+def get_file_content(owner: str, repo: str, file_path: str, branch: str = "main", token: str = None) -> dict:
     """
     Get content of a specific file from repository.
     
@@ -327,12 +347,13 @@ def get_file_content(owner: str, repo: str, file_path: str, branch: str = "main"
         repo: Repository name
         file_path: Path to file in repository
         branch: Branch name (default: main)
+        token: GitHub Personal Access Token (optional)
     
     Returns:
         Dictionary with file content and metadata
     """
     try:
-        data = make_github_request(f"repos/{owner}/{repo}/contents/{file_path}?ref={branch}")
+        data = make_github_request(f"repos/{owner}/{repo}/contents/{file_path}?ref={branch}", token=token)
         
         if data.get("type") != "file":
             raise Exception(f"Path {file_path} is not a file")
@@ -357,4 +378,3 @@ __all__ = [
     'get_recent_commits',
     'get_file_content'
 ]
-
